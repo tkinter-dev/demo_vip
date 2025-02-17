@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trình phát nhạc YouTube (Chỉ âm thanh)</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin: 20px;
+            padding: 0;
+            background-color: #f7f7f7;
+        }
+        h2 {
+            color: #333;
+        }
+        input, button {
+            padding: 12px;
+            margin: 10px 0;
+            width: 90%;
+            max-width: 400px;
+            font-size: 16px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        ul {
+            list-style: none;
+            padding: 0;
+            text-align: left;
+        }
+        li {
+            margin: 10px 0;
+            background-color: #fff;
+            padding: 10px;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            font-size: 14px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+        }
+        .hidden {
+            width: 1px;
+            height: 1px;
+            opacity: 0;
+            position: absolute;
+        }
+        .current-song {
+            background-color: #ffeb3b; /* Màu nền khác biệt cho bài hát đang phát */
+            font-weight: bold;
+        }
+        .playlist-buttons {
+            display: flex;
+            justify-content: space-around;
+            padding: 10px;
+        }
+        .playlist-buttons button {
+            width: 45%;
+        }
+        .remove-btn {
+            background-color: red;
+            color: white;
+            cursor: pointer;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 5px;
+            margin-left: 10px;
+        }
+
+        /* Responsive design */
+        @media (max-width: 768px) {
+            body {
+                margin: 10px;
+            }
+            h2 {
+                font-size: 20px;
+            }
+            input, button {
+                width: 100%;
+                font-size: 14px;
+            }
+            .playlist-buttons button {
+                width: 45%;
+                font-size: 14px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            h2 {
+                font-size: 18px;
+            }
+            input, button {
+                width: 100%;
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <h2>🎵 Trình phát nhạc YouTube (Chỉ âm thanh)</h2>
+    <button onclick="toggleAddSong()">+ Thêm bài hát</button>
+
+    <div id="addSongContainer" style="display: none;">
+        <input type="text" id="songName" placeholder="Nhập tên bài hát">
+        <input type="text" id="videoUrl" placeholder="Nhập link YouTube">
+        <button onclick="addSong()">Thêm</button>
+    </div>
+
+    <ul id="playlist"></ul>
+
+    <div class="playlist-buttons">
+        <button onclick="togglePlayPause()">⏯ Phát/Dừng</button>
+        <button onclick="nextSong()">⏭ Bài tiếp theo</button>
+        <button id="removeBtn" class="remove-btn" onclick="removeSong(currentSongIndex)">❌ Xóa bài hát hiện tại</button>
+    </div>
+
+    <iframe id="player" class="hidden" allow="autoplay"></iframe>
+
+    <script>
+        let songs = JSON.parse(localStorage.getItem("youtubePlaylist")) || [];
+        let currentSongIndex = -1; // Không bài hát nào được chọn ban đầu
+        let isPlaying = false;
+        let checkInterval;
+
+        function getYouTubeEmbedUrl(url) {
+            let videoId = url.split("v=")[1]?.split("&")[0] || url.split("youtu.be/")[1];
+            return videoId ? `https://www.youtube.com/embed/${videoId}?autoplay=1&enablejsapi=1` : "";
+        }
+
+        function toggleAddSong() {
+            let addSongContainer = document.getElementById("addSongContainer");
+            // Toggling the visibility of the add song input area
+            addSongContainer.style.display = addSongContainer.style.display === "none" ? "block" : "none";
+        }
+
+        function addSong() {
+            let name = document.getElementById("songName").value.trim();
+            let url = document.getElementById("videoUrl").value.trim();
+            if (name && url) {
+                let song = {
+                    name: name,
+                    url: url
+                };
+                songs.push(song);
+                localStorage.setItem("youtubePlaylist", JSON.stringify(songs));
+                document.getElementById("songName").value = "";
+                document.getElementById("videoUrl").value = "";
+                renderPlaylist();
+            }
+        }
+
+        function removeSong(index) {
+            if (index !== undefined && songs[index]) {
+                songs.splice(index, 1);
+                localStorage.setItem("youtubePlaylist", JSON.stringify(songs));
+                if (currentSongIndex >= songs.length) {
+                    currentSongIndex = songs.length - 1;
+                }
+                renderPlaylist();
+                if (songs.length > 0) {
+                    playSong(currentSongIndex); // Play the next song if any
+                } else {
+                    document.getElementById("player").src = ""; // Stop playback if no songs
+                }
+            }
+        }
+
+        function playSong(index) {
+            let player = document.getElementById("player");
+            if (songs[index]) {
+                player.src = getYouTubeEmbedUrl(songs[index].url);
+                currentSongIndex = index;
+                isPlaying = true;
+                startCheckingVideoEnd();
+            }
+        }
+
+        function togglePlayPause() {
+            let player = document.getElementById("player");
+            if (currentSongIndex === -1) return; // Không có bài hát được chọn
+            if (isPlaying) {
+                player.src = ""; // Dừng nhạc
+                clearInterval(checkInterval);
+            } else {
+                playSong(currentSongIndex);
+            }
+            isPlaying = !isPlaying;
+        }
+
+        function nextSong() {
+            currentSongIndex = (currentSongIndex + 1) % songs.length;
+            playSong(currentSongIndex);
+        }
+
+        function startCheckingVideoEnd() {
+            clearInterval(checkInterval);
+            checkInterval = setInterval(() => {
+                let player = document.getElementById("player");
+                if (player.src === "") {
+                    nextSong();
+                }
+            }, 5000); // Kiểm tra mỗi 5 giây
+        }
+
+        function renderPlaylist() {
+            let playlist = document.getElementById("playlist");
+            playlist.innerHTML = "";
+            songs.forEach((song, index) => {
+                let li = document.createElement("li");
+                li.className = (index === currentSongIndex) ? "current-song" : "";
+                li.innerHTML = `
+                    <span onclick="selectSong(${index})">🎵 ${song.name}</span>
+                `;
+                playlist.appendChild(li);
+            });
+        }
+
+        function selectSong(index) {
+            currentSongIndex = index;
+            renderPlaylist(); // Cập nhật lại danh sách để thể hiện bài hát đang chọn
+        }
+
+        renderPlaylist();
+    </script>
+
+</body>
+</html>
